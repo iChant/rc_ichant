@@ -1,2 +1,6 @@
 .venv
 original.md
+*.db
+*.db-*
+
+*/__pycache__
