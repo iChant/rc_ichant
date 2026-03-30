@@ -1,12 +1,27 @@
 import json
 import logging
 
-from jinja2 import Environment, TemplateError, Undefined
+from jinja2 import Environment, StrictUndefined, TemplateError
 
 logger = logging.getLogger(__name__)
 
-# 使用严格模式：访问未定义变量时抛出异常而非静默返回空字符串
-_env = Environment(undefined=Undefined)
+
+def _tojson_filter(value) -> str:
+    """
+    Jinja2 过滤器：将 Python 对象序列化为 JSON 字面量字符串。
+
+    用于在 body 模板中内嵌 JSON 值，例如：
+        {{ content | tojson }}          →  {"key": "value"}
+        {{ content.amount | tojson }}   →  99.0
+        {{ True | tojson }}             →  true
+    """
+    return json.dumps(value, ensure_ascii=False)
+
+
+# 使用 StrictUndefined：访问模板中未定义的变量时抛出异常，
+# 而非静默返回空字符串，便于尽早发现模板配置错误。
+_env = Environment(undefined=StrictUndefined)
+_env.filters["tojson"] = _tojson_filter
 
 
 def build_template_context(
@@ -22,6 +37,7 @@ def build_template_context(
       - title       : 通知标题（字符串，未传时为空字符串）
       - content     : 通知正文（dict，未传时为空 dict）
                       支持 {{ content.key }} 或 {{ content['key'] }} 两种访问方式
+                      支持 {{ content | tojson }} 将整个 dict 序列化为 JSON 字符串
     """
     return {
         "customer_id": customer_id,
@@ -70,7 +86,8 @@ def render_headers(headers_template: str, context: dict) -> str:
 
     if not isinstance(parsed, dict):
         raise ValueError(
-            f"Headers template must render to a JSON object, got {type(parsed).__name__}"
+            f"Headers template must render to a JSON object, "
+            f"got {type(parsed).__name__}"
         )
 
     return rendered

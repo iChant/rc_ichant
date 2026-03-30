@@ -30,12 +30,18 @@ class Dispatcher:
         poll_interval: float | None = None,
         batch_size: int | None = None,
         stale_timeout_minutes: int | None = None,
+        retry_delay_fn=None,
     ) -> None:
         self._queue = queue
         self._poll_interval = poll_interval or settings.poll_interval_seconds
         self._batch_size = batch_size or settings.batch_size
         self._stale_timeout = (
             stale_timeout_minutes or settings.stale_timeout_minutes
+        )
+        # 可注入自定义重试延迟函数，主要用于测试（避免等待分钟级的真实退避时间）。
+        # 签名：(retry_number: int) -> datetime
+        self._retry_delay_fn = (
+            retry_delay_fn if retry_delay_fn is not None else _calc_retry_at
         )
 
         self._stop_event = threading.Event()
@@ -175,7 +181,7 @@ class Dispatcher:
             # TODO: 集成外部告警（钉钉、PagerDuty 等）
             #   _send_alert(job, error)
         else:
-            retry_at = _calc_retry_at(next_attempt)
+            retry_at = self._retry_delay_fn(next_attempt)
             self._queue.nack(job.id, retry_at, error)
             logger.info(
                 "Job %s will retry at %s (attempt %d/%d).",
